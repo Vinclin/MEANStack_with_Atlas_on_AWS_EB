@@ -10,13 +10,13 @@
   "author": "Stanimira Vlaeva",
   "license": "Apache 2.0",
   "dependencies": {
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "dotenv": "^16.0.0",
     "express": "^4.22.0",
     "mongodb": "^4.17.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.12",
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.13",
     "@types/node": "^17.0.21",
     "ts-node": "^10.5.0",
