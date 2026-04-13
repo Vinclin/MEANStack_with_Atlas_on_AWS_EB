@@ -1,30 +1,112 @@
-# GitHub Actions Workflow for npm audit fix
-
-name: npm-audit-fix
+name: npm Audit Fix
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: '0 4 * * 1'  # Every Monday at 04:00 UTC (after CodeQL scan)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  audit:
+  audit-fix:
+    name: Run npm audit fix and open PR
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - code/partner-eb-meanstack-atlas
+          - code/partner-eb-meanstack-atlas/server
+          - code/partner-eb-meanstack-atlas/client
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm ci --ignore-scripts
 
       - name: Run npm audit fix
+        working-directory: ${{ matrix.directory }}
+        run: npm audit fix --package-lock-only
+
+      - name: Check for changes
+        id: changes
+        working-directory: ${{ matrix.directory }}
         run: |
-          git fetch origin "${BRANCH}" || true;
-          if git show-ref --verify --quiet refs/remotes/origin/${BRANCH}; then
-            git checkout -B "${BRANCH}" "origin/${BRANCH}";
+          if git diff --quiet package-lock.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            git checkout -b "${BRANCH}";
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-          npm audit fix
-          git add -A
-          git commit -m "fix: run npm audit fix" || true
+
+      - name: Derive safe branch/PR name
+        if: steps.changes.outputs.changed == 'true'
+        id: names
+        run: |
+          safe_dir=$(echo "${{ matrix.directory }}" | tr '/' '-')
+          echo "branch=fix/npm-audit-${safe_dir}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          echo "title=fix(deps): npm audit fix for ${{ matrix.directory }}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit fix and push branch
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="${{ steps.names.outputs.branch }}"
+
+          # If the branch already exists (rerun / previous attempt), base our work on it.
+          git fetch origin "${BRANCH}" || true
+          if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH}"; then
+            git checkout -B "${BRANCH}" "origin/${BRANCH}"
+          else
+            git checkout -b "${BRANCH}"
+          fi
+
+          git add "${{ matrix.directory }}/package-lock.json"
+          git commit -m "${{ steps.names.outputs.title }}" || exit 0
+
+          # Safe force push to avoid non-fast-forward failures while still protecting against races.
           git push --force-with-lease origin "${BRANCH}"
 
-      # Additional steps can go here
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        id: create-pr
+        run: |
+          PR_URL=$(gh pr create \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "${{ steps.names.outputs.branch }}" \
+            --title "${{ steps.names.outputs.title }}" \
+            --body "Automated PR created by the **npm Audit Fix** workflow.\n\nFixes vulnerabilities found by `npm audit` in `${{ matrix.directory }}`.\n\nThis PR was auto-generated and will be auto-merged if all checks pass." \
+            --label "dependencies")
+          if [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
+            echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unexpected output from gh pr create: ${PR_URL}" >&2
+            exit 1
+          fi
+
+      - name: Auto-approve PR
+        if: steps.changes.outputs.changed == 'true'
+        continue-on-error: true
+        run: gh pr review --approve "${{ steps.create-pr.outputs.pr_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+
+      - name: Enable auto-merge
+        if: steps.changes.outputs.changed == 'true'
+        run: gh pr merge --auto --squash "${{ steps.create-pr.outputs.pr_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
