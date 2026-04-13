@@ -1,109 +1,22 @@
-name: npm Audit Fix
+name: Commit fix and push branch
+  if: steps.changes.outputs.changed == 'true'
+  run: |
+    git config user.name  "github-actions[bot]"
+    git config user.email "github-actions[bot]@users.noreply.github.com"
 
-on:
-  schedule:
-    - cron: '0 4 * * 1'  # Every Monday at 04:00 UTC (after CodeQL scan)
-  workflow_dispatch:
+    BRANCH="${{ steps.names.outputs.branch }}"
 
-permissions:
-  contents: write
-  pull-requests: write
+    # Fetch the remote branch if it already exists (reruns/concurrency)
+    git fetch origin "${BRANCH}:${BRANCH}" || true
 
-jobs:
-  audit-fix:
-    name: Run npm audit fix and open PR
-    runs-on: ubuntu-latest
+    # If branch exists locally (likely from fetch), check it out and rebase; otherwise create it
+    if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
+      git checkout "${BRANCH}"
+      git pull --rebase origin "${BRANCH}" || true
+    else
+      git checkout -b "${BRANCH}"
+    fi
 
-    strategy:
-      fail-fast: false
-      matrix:
-        directory:
-          - code/partner-eb-meanstack-atlas
-          - code/partner-eb-meanstack-atlas/server
-          - code/partner-eb-meanstack-atlas/client
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: npm
-          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ${{ matrix.directory }}
-        run: npm ci --ignore-scripts
-
-      - name: Run npm audit fix
-        working-directory: ${{ matrix.directory }}
-        run: npm audit fix --package-lock-only
-
-      - name: Check for changes
-        id: changes
-        working-directory: ${{ matrix.directory }}
-        run: |
-          if git diff --quiet package-lock.json; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Derive safe branch/PR name
-        if: steps.changes.outputs.changed == 'true'
-        id: names
-        run: |
-          safe_dir=$(echo "${{ matrix.directory }}" | tr '/' '-')
-          echo "branch=fix/npm-audit-${safe_dir}-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-          echo "title=fix(deps): npm audit fix for ${{ matrix.directory }}" >> "$GITHUB_OUTPUT"
-
-      - name: Commit fix and push branch
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${{ steps.names.outputs.branch }}"
-          git add "${{ matrix.directory }}/package-lock.json"
-          git commit -m "${{ steps.names.outputs.title }}"
-          git push origin "${{ steps.names.outputs.branch }}"
-
-      - name: Create pull request
-        if: steps.changes.outputs.changed == 'true'
-        id: create-pr
-        run: |
-          PR_URL=$(gh pr create \
-            --base "${{ github.event.repository.default_branch }}" \
-            --head "${{ steps.names.outputs.branch }}" \
-            --title "${{ steps.names.outputs.title }}" \
-            --body "Automated PR created by the **npm Audit Fix** workflow.
-
-          Fixes vulnerabilities found by \`npm audit\` in \`${{ matrix.directory }}\`.
-
-          This PR was auto-generated and will be auto-merged if all checks pass." \
-            --label "dependencies")
-          # Validate the returned value looks like a GitHub PR URL before storing
-          if [[ "$PR_URL" =~ ^https://github\.com/.+/pull/[0-9]+$ ]]; then
-            echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
-          else
-            echo "Unexpected output from gh pr create: ${PR_URL}" >&2
-            exit 1
-          fi
-
-      # Note: approving your own PR with GITHUB_TOKEN is blocked by GitHub when
-      # branch-protection rules require reviews from other people. If that rule is
-      # enabled, supply a PAT via a repository secret named AUTO_MERGE_PAT and
-      # replace `secrets.GITHUB_TOKEN` with `secrets.AUTO_MERGE_PAT` below.
-      - name: Auto-approve PR
-        if: steps.changes.outputs.changed == 'true'
-        continue-on-error: true
-        run: gh pr review --approve "${{ steps.create-pr.outputs.pr_url }}"
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
-
-      - name: Enable auto-merge
-        if: steps.changes.outputs.changed == 'true'
-        run: gh pr merge --auto --squash "${{ steps.create-pr.outputs.pr_url }}"
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+    git add "${{ matrix.directory }}/package-lock.json"
+    git commit -m "${{ steps.names.outputs.title }}" || exit 0
+    git push origin "${BRANCH}".
