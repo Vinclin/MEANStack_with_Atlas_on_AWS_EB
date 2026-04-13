@@ -50,8 +50,22 @@ employeeRouter.put("/:id", async (req, res) => {
     try {
         const id = req?.params?.id;
         const employee = req.body;
+
+        const allowedUpdateFields = ["name", "position", "level"];
+        const employeeUpdate: Record<string, unknown> = {};
+        for (const field of allowedUpdateFields) {
+            if (Object.prototype.hasOwnProperty.call(employee, field)) {
+                employeeUpdate[field] = employee[field];
+            }
+        }
+
+        if (Object.keys(employeeUpdate).length === 0) {
+            res.status(400).send("No valid employee fields provided for update.");
+            return;
+        }
+
         const query = { _id: new mongodb.ObjectId(id) };
-        const result = await collections.employees.updateOne(query, { $set: employee });
+        const result = await collections.employees.updateOne(query, { $set: employeeUpdate });
 
         if (result && result.matchedCount) {
             res.status(200).send(`Updated an employee: ID ${id}.`);
