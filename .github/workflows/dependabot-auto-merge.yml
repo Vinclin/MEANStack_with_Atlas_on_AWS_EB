@@ -16,8 +16,8 @@ jobs:
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: ${{ secrets.AUTO_MERGE_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
 
       - name: Auto-approve Dependabot PR
         if: |
