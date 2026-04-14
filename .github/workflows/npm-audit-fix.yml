@@ -105,7 +105,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         id: create-pr
         env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_URL=$(gh pr create \
             --base "${{ github.event.repository.default_branch }}" \
@@ -124,5 +124,5 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr merge --auto --squash "${{ steps.create-pr.outputs.pr_url }}"
