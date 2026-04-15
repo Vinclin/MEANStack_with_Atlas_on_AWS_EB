@@ -109,7 +109,7 @@ employeeRouter.delete("/:id", async (req, res) => {
             res.status(404).send(`Failed to find an employee: ID ${safeId}`);
         }
     } catch (error) {
-        console.error(error.message);
-        res.status(400).send(error.message);
+        console.error(error instanceof Error ? error.message : error);
+        res.status(400).send("Invalid employee ID.");
     }
 });
