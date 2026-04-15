@@ -1,9 +1,19 @@
 import * as express from "express";
 import * as mongodb from "mongodb";
+import rateLimit from "express-rate-limit";
 import { collections } from "./database";
 
 export const employeeRouter = express.Router();
 employeeRouter.use(express.json());
+
+const employeeRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+employeeRouter.use(employeeRateLimiter);
 
 employeeRouter.get("/", async (_req, res) => {
     try {
