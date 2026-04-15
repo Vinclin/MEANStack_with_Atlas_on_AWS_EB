@@ -1,6 +1,7 @@
 import * as express from "express";
 import * as mongodb from "mongodb";
 import rateLimit from "express-rate-limit";
+import escapeHtml from "escape-html";
 import { collections } from "./database";
 
 export const employeeRouter = express.Router();
@@ -27,16 +28,18 @@ employeeRouter.get("/", async (_req, res) => {
 employeeRouter.get("/:id", async (req, res) => {
     try {
         const id = req?.params?.id;
+        const safeId = escapeHtml(String(id ?? ""));
         const query = { _id: new mongodb.ObjectId(id) };
         const employee = await collections.employees.findOne(query);
 
         if (employee) {
             res.status(200).send(employee);
         } else {
-            res.status(404).send(`Failed to find an employee: ID ${id}`);
+            res.status(404).send(`Failed to find an employee: ID ${safeId}`);
         }
     } catch (error) {
-        res.status(404).send(`Failed to find an employee: ID ${req?.params?.id}`);
+        const safeId = escapeHtml(String(req?.params?.id ?? ""));
+        res.status(404).send(`Failed to find an employee: ID ${safeId}`);
     }
 });
 
@@ -59,6 +62,7 @@ employeeRouter.post("/", async (req, res) => {
 employeeRouter.put("/:id", async (req, res) => {
     try {
         const id = req?.params?.id;
+        const safeId = escapeHtml(String(id ?? ""));
         const employee = req.body;
 
         const allowedUpdateFields = ["name", "position", "level"];
@@ -78,11 +82,11 @@ employeeRouter.put("/:id", async (req, res) => {
         const result = await collections.employees.updateOne(query, { $set: employeeUpdate });
 
         if (result && result.matchedCount) {
-            res.status(200).send(`Updated an employee: ID ${id}.`);
+            res.status(200).send(`Updated an employee: ID ${safeId}.`);
         } else if (!result.matchedCount) {
-            res.status(404).send(`Failed to find an employee: ID ${id}`);
+            res.status(404).send(`Failed to find an employee: ID ${safeId}`);
         } else {
-            res.status(304).send(`Failed to update an employee: ID ${id}`);
+            res.status(304).send(`Failed to update an employee: ID ${safeId}`);
         }
     } catch (error) {
         console.error(error.message);
@@ -93,15 +97,16 @@ employeeRouter.put("/:id", async (req, res) => {
 employeeRouter.delete("/:id", async (req, res) => {
     try {
         const id = req?.params?.id;
+        const safeId = escapeHtml(String(id ?? ""));
         const query = { _id: new mongodb.ObjectId(id) };
         const result = await collections.employees.deleteOne(query);
 
         if (result && result.deletedCount) {
-            res.status(202).send(`Removed an employee: ID ${id}`);
+            res.status(202).send(`Removed an employee: ID ${safeId}`);
         } else if (!result) {
-            res.status(400).send(`Failed to remove an employee: ID ${id}`);
+            res.status(400).send(`Failed to remove an employee: ID ${safeId}`);
         } else if (!result.deletedCount) {
-            res.status(404).send(`Failed to find an employee: ID ${id}`);
+            res.status(404).send(`Failed to find an employee: ID ${safeId}`);
         }
     } catch (error) {
         console.error(error.message);
